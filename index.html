@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Maltes Trainingsplan</title>
+
+  <style>
+    /* Grundstil für die Seite */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    h1 {
+      text-align: center;
+      margin: 20px 0;
+    }
+
+    /* ===== ZEITSTRAHL ===== */
+    /* Horizontale, scrollbare Leiste mit Trainingstagen */
+    #zeitstrahl {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;          /* Ermöglicht horizontales Scrollen */
+      padding: 20px;
+      scroll-behavior: smooth;   /* Sanftes Scrollen beim Zentrieren */
+    }
+
+    .zeitItem {
+      min-width: 120px;
+      height: 170px;
+      border-radius: 14px;
+      border: 2px solid gray;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      text-align: center;
+      cursor: pointer;
+      flex-shrink: 0;            /* Verhindert Schrumpfen der Karten */
+    }
+
+    /* Farbige Status-Markierungen */
+    .done { background: #d4f8d4; border-color: green; }    /* Erledigt */
+    .missed { background: #ffd6d6; border-color: red; }    /* Verpasst */
+    .future { background: #eee; }                          /* Noch offen */
+
+    /* ===== BUTTONS ===== */
+    #planButton {
+      display: block;
+      margin: 10px auto;
+      padding: 10px 20px;
+      border-radius: 12px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    #kalenderButton {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      font-size: 28px;
+      cursor: pointer;
+      background: none;
+      border: none;
+    }
+
+    #resetButton {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #e74c3c;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* ===== OVERLAY (Popup-Hintergrund) ===== */
+    /* Dunkler Hintergrund, der beim Öffnen eines Popups erscheint */
+    .overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      display: none;                    /* Standardmäßig versteckt */
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    /* Popup-Box im Overlay */
+    .popupBox {
+      background: white;
+      padding: 20px;
+      border-radius: 15px;
+      width: 85%;
+      max-width: 350px;
+      text-align: center;
+    }
+
+    /* ===== FORTSCHRITTSBALKEN ===== */
+    .progressContainer {
+      width: 100%;
+      height: 10px;
+      background: #ddd;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 15px;
+    }
+
+    .progressBar {
+      height: 100%;
+      width: 0%;                        /* Wird per JavaScript aktualisiert */
+      background: #4CAF50;
+      transition: width 0.3s ease;      /* Sanfte Animation */
+    }
+
+    /* ===== KALENDER ===== */
+    #kalenderBox {
+      background: white;
+      width: 90%;
+      max-width: 500px;
+      max-height: 70vh;
+      overflow-y: auto;
+      border-radius: 15px;
+      padding: 15px;
+    }
+
+    .monatsHeader {
+      font-weight: bold;
+      margin: 15px 0 5px;
+      text-align: center;
+    }
+
+    .wochentage, .tageGrid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);  /* 7 Spalten für Mo–So */
+      gap: 2px;
+    }
+
+    .wochentage span {
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .tag {
+      height: 36px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .heute { border: 2px solid #e74c3c; }         /* Heutiger Tag */
+    .erledigt { background: #a8e6a3; }            /* Training erledigt */
+    .verpasst { background: #f5a3a3; }            /* Training verpasst */
+    .leer { visibility: hidden; }                 /* Platzhalter-Tage */
+
+    /* ===== TRAININGSPLAN-EDITOR ===== */
+    #planBox {
+      background: white;
+      width: 90%;
+      max-width: 400px;
+      max-height: 80vh;
+      overflow-y: auto;
+      border-radius: 15px;
+      padding: 15px;
+    }
+
+    .planItem {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .planItem input {
+      width: 50px;
+      text-align: center;
+      padding: 4px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    #planBox button {
+      display: block;
+      margin: 15px auto 0;
+      padding: 10px 20px;
+      background: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Maltes Trainingsplan</h1>
+
+  <!-- Horizontaler Zeitstrahl mit Trainingstagen -->
+  <div id="zeitstrahl"></div>
+
+  <button id="planButton" onclick="openPlan()">Trainingsplan</button>
+  <button id="kalenderButton" onclick="openKalender()">📅</button>
+  <button id="resetButton" onclick="resetData()">Reset</button>
+
+  <!-- ===== KALENDER POPUP ===== -->
+  <div id="kalenderOverlay" class="overlay" onclick="closeKalender()">
+    <div id="kalenderBox" onclick="event.stopPropagation()"></div>
+  </div>
+
+  <!-- ===== JOGGEN POPUP ===== -->
+  <div id="jogOverlay" class="overlay" onclick="closeJog()">
+    <div class="popupBox" onclick="event.stopPropagation()">
+      <h3>🏃 Joggen</h3>
+      <p>Training beendet?</p>
+      <button onclick="confirmJog()">Workout beenden</button>
+    </div>
+  </div>
+
+  <!-- ===== TENNIS POPUP ===== -->
+  <div id="tennisOverlay" class="overlay" onclick="closeJog()">
+    <div class="popupBox" onclick="event.stopPropagation()">
+      <h3>🎾 Tennis</h3>
+      <p>Training beendet?</p>
+      <button onclick="confirmTennis()">Workout beenden</button>
+    </div>
+  </div>
+
+  <!-- ===== WORKOUT POPUP (Calisthenics) ===== -->
+  <div id="workoutOverlay" class="overlay">
+    <div class="popupBox">
+      <div class="progressContainer">
+        <div id="progressBar" class="progressBar"></div>
+      </div>
+      <h3 id="exerciseTitle"></h3>
+      <p id="exerciseInfo"></p>
+      <button id="workoutBtn" onclick="nextExercise()">Weiter</button>
+    </div>
+  </div>
+
+  <!-- ===== TRAININGSPLAN EDITOR ===== -->
+  <div id="planOverlay" class="overlay" onclick="closePlan()">
+    <div id="planBox" onclick="event.stopPropagation()">
+      <h3>Trainingsplan bearbeiten</h3>
+      <div id="planList"></div>
+      <button onclick="savePlan()">Speichern</button>
+    </div>
+  </div>
+
+  <script>
+    // ===== KONSTANTEN =====
+    const STORAGE_KEY = "trainingData";   // Key für erledigte Trainings
+    const PLAN_KEY = "plan";              // Key für den Übungsplan
+
+    // ===== DATEN LADEN =====
+    // Lädt gespeicherte Trainingsdaten aus localStorage (oder leeres Array)
+    let trainingData = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+
+    // Standard-Calisthenics-Plan (wird aus localStorage geladen, falls vorhanden)
+    let calisthenicsPlan = JSON.parse(localStorage.getItem(PLAN_KEY)) || [
+      { name: "Klimmzüge", reps: "3x" },
+      { name: "Klimmzüge", reps: "3x" },
+      { name: "Klimmzüge", reps: "3x" },
+      { name: "Dips", reps: "3x" },
+      { name: "Dips", reps: "3x" },
+      { name: "Dips", reps: "3x" },
+      { name: "Rudern", reps: "7x" },
+      { name: "Rudern", reps: "7x" },
+      { name: "Rudern", reps: "7x" },
+      { name: "Liegestütze", reps: "5x" },
+      { name: "Liegestütze", reps: "5x" },
+      { name: "Liegestütze", reps: "5x" },
+      { name: "Hanging Leg-Raises", reps: "5x" },
+      { name: "Hanging Leg-Raises", reps: "5x" },
+      { name: "Hanging Leg-Raises", reps: "5x" }
+    ];
+
+    // ===== ZUSTANDSVARIABLEN =====
+    let selectedDateKey = null;   // Aktuell ausgewähltes Datum
+    let activeWorkout = null;     // Aktueller Workout-Fortschritt
+
+    // ===== HILFSFUNKTIONEN =====
+
+    // Speichert Trainingsdaten in localStorage
+    function save() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(trainingData));
+    }
+
+    // Bestimmt den Trainingstyp basierend auf dem Wochentag
+    // Mo(1), Mi(3), Sa(6) = Calisthenics
+    // Di(2), Do(4), So(0) = Joggen
+    // Fr(5) = Tennis
+    function getType(date) {
+      const day = date.getDay();
+      if ([1, 3, 6].includes(day)) return "Calisthenics";
+      if ([2, 4, 0].includes(day)) return "Joggen";
+      return "Tennis";
+    }
+
+    // Vergleicht zwei Daten (nur Jahr, Monat, Tag – ohne Uhrzeit)
+    function isSameDay(d1, d2) {
+      return d1.toDateString() === d2.toDateString();
+    }
+
+    // Prüft, ob ein Datum in der Vergangenheit liegt
+    function isPast(date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const compare = new Date(date);
+      compare.setHours(0, 0, 0, 0);
+      return compare < today;
+    }
+
+    // ===== RESET =====
+    function resetData() {
+      if (!confirm("Alle Daten löschen?")) return;
+      localStorage.clear();
+      trainingData = [];
+      renderAll();
+    }
+
+    // ===== ZEITSTRAHL RENDERN =====
+    function renderZeitstrahl() {
+      const container = document.getElementById("zeitstrahl");
+      container.innerHTML = "";
+      const today = new Date();
+      let todayElement = null;
+
+      // Zeigt 7 Tage zurück und 7 Tage voraus
+      for (let i = -7; i <= 7; i++) {
+        const date = new Date();
+        date.setDate(today.getDate() + i);
+        const key = date.toDateString();
+
+        // Prüft, ob für dieses Datum ein Eintrag existiert
+        const entry = trainingData.find(e => e.date === key);
+        const type = getType(date);
+
+        // Erstellt die Karte
+        const div = document.createElement("div");
+        div.className = "zeitItem";
+
+        // Status bestimmen
+        let status, statusClass;
+        if (entry) {
+          status = "✔️ erledigt";
+          statusClass = "done";
+        } else if (isPast(date)) {
+          status = "❌ verpasst";
+          statusClass = "missed";
+        } else {
+          status = "⏳ offen";
+          statusClass = "future";
+        }
+
+        div.classList.add(statusClass);
+
+        // Inhalt der Karte
+        div.innerHTML = `
+          <div style="font-weight: bold;">${date.toLocaleDateString("de-DE", { weekday: "short" })}</div>
+          <div>${date.toLocaleDateString("de-DE")}</div>
+          <div>${type}</div>
+          <div>${status}</div>
+        `;
+
+        // Klick-Handler: Öffnet das passende Popup
+        div.onclick = () => handleClick(date, key, entry, type);
+        container.appendChild(div);
+
+        // Merkt sich das heutige Element zum Zentrieren
+        if (i === 0) todayElement = div;
+      }
+
+      // Scrollt zum heutigen Tag
+      setTimeout(() => {
+        if (todayElement) {
+          todayElement.scrollIntoView({ inline: "center", behavior: "smooth" });
+        }
+      }, 100);
+    }
+
+    // ===== KLICK-HANDLER =====
+    function handleClick(date, key, entry, type) {
+      // Nur vergangene/heutige Tage ohne Eintrag können angeklickt werden
+      if (!isPast(date) && !isSameDay(date, new Date())) return;
+      if (entry) return;
+
+      selectedDateKey = key;
+
+      // Öffnet das passende Popup je nach Trainingstyp
+      if (type === "Joggen") {
+        document.getElementById("jogOverlay").style.display = "flex";
+      } else if (type === "Tennis") {
+        document.getElementById("tennisOverlay").style.display = "flex";
+      } else {
+        // Calisthenics: Startet das Workout
+        activeWorkout = { index: 0, dateKey: key };
+        document.getElementById("workoutOverlay").style.display = "flex";
+        document.getElementById("workoutBtn").innerText = "Weiter";
+        showExercise();
+      }
+    }
+
+    // ===== JOGGEN POPUP =====
+    function confirmJog() {
+      saveWorkout(selectedDateKey);
+      closeJog();
+    }
+
+    function closeJog() {
+      document.getElementById("jogOverlay").style.display = "none";
+    }
+
+    // ===== TENNIS POPUP =====
+    function confirmTennis() {
+      saveWorkout(selectedDateKey);
+      closeTennis();
+    }
+
+    function closeTennis() {
+      document.getElementById("tennisOverlay").style.display = "none";
+    }
+
+    // ===== WORKOUT (Calisthenics) =====
+    function showExercise() {
+      const exercise = calisthenicsPlan[activeWorkout.index];
+      document.getElementById("exerciseTitle").innerText = exercise.name;
+      document.getElementById("exerciseInfo").innerText = exercise.reps;
+
+      // Aktualisiert den Fortschrittsbalken
+      const progress = (activeWorkout.index / calisthenicsPlan.length) * 100;
+      document.getElementById("progressBar").style.width = progress + "%";
+
+      // Ändert Button-Text bei letzter Übung
+      if (activeWorkout.index === calisthenicsPlan.length - 1) {
+        document.getElementById("workoutBtn").innerText = "Workout beenden";
+      }
+    }
+
+    function nextExercise() {
+      activeWorkout.index++;
+
+      if (activeWorkout.index >= calisthenicsPlan.length) {
+        // Workout abgeschlossen
+        saveWorkout(activeWorkout.dateKey);
+        document.getElementById("workoutOverlay").style.display = "none";
+      } else {
+        showExercise();
+      }
+    }
+
+    // Speichert ein abgeschlossenes Training
+    function saveWorkout(key) {
+      trainingData.push({ date: key });
+      save();
+      renderAll();
+    }
+
+    // ===== KALENDER =====
+    function openKalender() {
+      document.getElementById("kalenderOverlay").style.display = "flex";
+      renderKalender();
+    }
+
+    function closeKalender() {
+      document.getElementById("kalenderOverlay").style.display = "none";
+    }
+
+    function renderKalender() {
+      const box = document.getElementById("kalenderBox");
+      box.innerHTML = "";
+      const today = new Date();
+      const currentYear = today.getFullYear();
+
+      const monatsnamen = [
+        "Januar", "Februar", "März", "April", "Mai", "Juni",
+        "Juli", "August", "September", "Oktober", "November", "Dezember"
+      ];
+
+      // Rendert jeden Monat des aktuellen Jahres
+      for (let m = 0; m < 12; m++) {
+        // Monatsüberschrift
+        const header = document.createElement("div");
+        header.className = "monatsHeader";
+        header.innerText = monatsnamen[m] + " " + currentYear;
+        box.appendChild(header);
+
+        // Wochentage-Header
+        const wochentage = document.createElement("div");
+        wochentage.className = "wochentage";
+        ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].forEach(tag => {
+          const span = document.createElement("span");
+          span.innerText = tag;
+          wochentage.appendChild(span);
+        });
+        box.appendChild(wochentage);
+
+        // Tage-Grid
+        const grid = document.createElement("div");
+        grid.className = "tageGrid";
+
+        // Ermittelt den ersten Tag des Monats
+        const firstDay = new Date(currentYear, m, 1);
+        // Wochentag des 1. (0=So, 1=Mo, ...)
+        let startDay = firstDay.getDay();
+        // Konvertiert zu Mo=0, Di=1, ..., So=6
+        startDay = (startDay === 0) ? 6 : startDay - 1;
+
+        // Leere Zellen vor dem 1. des Monats
+        for (let i = 0; i < startDay; i++) {
+          const empty = document.createElement("div");
+          empty.className = "tag leer";
+          grid.appendChild(empty);
+        }
+
+        // Anzahl Tage im Monat
+        const daysInMonth = new Date(currentYear, m + 1, 0).getDate();
+
+        // Rendert jeden Tag
+        for (let d = 1; d <= daysInMonth; d++) {
+          const el = document.createElement("div");
+          el.className = "tag";
+
+          const date = new Date(currentYear, m, d);
+          const key = date.toDateString();
+          const entry = trainingData.find(e => e.date === key);
+
+          // Markierungen
+          if (isSameDay(date, today)) el.classList.add("heute");
+          if (entry) el.classList.add("erledigt");
+          else if (isPast(date)) el.classList.add("verpasst");
+
+          el.innerText = d;
+          grid.appendChild(el);
+        }
+
+        box.appendChild(grid);
+      }
+    }
+
+    // ===== TRAININGSPLAN EDITOR =====
+    function openPlan() {
+      document.getElementById("planOverlay").style.display = "flex";
+      renderPlan();
+    }
+
+    function closePlan() {
+      document.getElementById("planOverlay").style.display = "none";
+    }
+
+    function renderPlan() {
+      const list = document.getElementById("planList");
+      list.innerHTML = "";
+
+      calisthenicsPlan.forEach((exercise, index) => {
+        const row = document.createElement("div");
+        row.className = "planItem";
+        row.innerHTML = `
+          <span>${exercise.name}</span>
+          <input value="${exercise.reps}" 
+                 onchange="calisthenicsPlan[${index}].reps = this.value">
+        `;
+        list.appendChild(row);
+      });
+    }
+
+    function savePlan() {
+      localStorage.setItem(PLAN_KEY, JSON.stringify(calisthenicsPlan));
+      closePlan();
+    }
+
+    // ===== INITIALISIERUNG =====
+    function renderAll() {
+      renderZeitstrahl();
+    }
+
+    // Startet die App
+    renderAll();
+  </script>
+
+</body>
+</html>
